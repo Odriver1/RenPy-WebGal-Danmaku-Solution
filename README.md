@@ -3,6 +3,8 @@
 为 Ren'Py 和 WebGAL 两款视觉小说引擎提供弹幕功能，支持滚动/列表两种显示模式，后端基于 WordPress REST API。
 
 > 本次开发针对 **Ren'Py 8.5.0** / **WebGAL Terre 4.6.0**。其他版本可能需要调整代码。
+>
+> 演示视频：[B站 BV1KVG86FE69](https://www.bilibili.com/video/BV1KVG86FE69)
 
 ## 项目结构
 
