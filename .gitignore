@@ -15,4 +15,7 @@ __pycache__/
 *.rpyc
 *.rpymc
 game/saves/
+# Release zip (distributed via GitHub Releases)
+RenPyWebGal_DanmakuSolution*.zip
+
 game/cache/
