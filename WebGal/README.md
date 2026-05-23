@@ -18,6 +18,8 @@ danmaku-package/
 │   │   ├── initializeScript.ts
 │   │   ├── webgalCore.ts
 │   │   ├── gameScripts/say.ts
+│   │   ├── controller/storage/storageController.ts
+│   │   ├── util/coreInitialFunction/infoFetcher.ts
 │   │   └── Modules/stage/
 │   └── store/
 │       ├── store.ts
@@ -78,22 +80,24 @@ base: './',
 
 #### 2. `store/userDataInterface.ts`
 
-在 `IOptionData` 接口末尾添加两个字段（约第 49 行，`skipAll` 之后）：
+在 `IOptionData` 接口末尾添加三个字段（约第 49 行，`skipAll` 之后）：
 
 ```ts
 danmakuEnabled: boolean;
 danmakuStyle: 'scroll' | 'list';
+danmakuVersion: number;
 ```
 
 ---
 
 #### 3. `store/userDataReducer.ts`
 
-在 `initialOptionSet` 对象末尾添加两个默认值（约第 38 行，`skipAll` 之后）：
+在 `initialOptionSet` 对象末尾添加三个默认值（约第 38 行，`skipAll` 之后）：
 
 ```ts
 danmakuEnabled: true,
 danmakuStyle: 'scroll' as const,
+danmakuVersion: 1 as const,
 ```
 
 ---
@@ -159,11 +163,16 @@ import { DanmakuCore } from '@/Core/Modules/danmaku/DanmakuCore';
 import { webgalStore } from '@/store/store';
 ```
 
-**8b.** 在 `initializeScript` 函数末尾（约第 80 行，`webSocketFunc()` 之后、`};` 闭合之前）添加：
+**8b.** 在 `initializeScript` 函数中，将：
 
 ```ts
-// 延迟初始化弹幕（等待 config.txt 加载完毕）
-setTimeout(() => initDanmaku(), 800);
+infoFetcher('./game/config.txt');
+```
+
+改为：
+
+```ts
+infoFetcher('./game/config.txt').then(() => initDanmaku());
 ```
 
 **8c.** 在文件末尾（`initializeScript` 函数闭合之后）添加整个函数：
@@ -194,7 +203,45 @@ function initDanmaku() {
 
 ---
 
-#### 9. `Core/gameScripts/say.ts`
+---
+
+#### 9. `Core/util/coreInitialFunction/infoFetcher.ts`
+
+找到 `export const infoFetcher` 函数定义（约第 33 行），将函数改为返回 Promise：
+
+```ts
+export const infoFetcher = (url: string): Promise<void> => {
+  const dispatch = webgalStore.dispatch;
+  return axios.get(url).then(async (r) => {
+    // ... 原有逻辑不变 ...
+  });
+};
+```
+
+> 改动要点：给函数加上 `: Promise<void>` 返回类型，用 `return` 返回 axios 的 promise chain。这样 `initializeScript.ts` 才能用 `.then()` 链式调用 `initDanmaku()`。
+
+---
+
+#### 10. `Core/controller/storage/storageController.ts`
+
+在 `normalizeUserData` 函数的 `optionData: { ...defaultUserData.optionData, ...optionData }` 处（约第 47 行），将简单的展开改为带版本迁移的逻辑：
+
+```ts
+optionData: {
+  ...defaultUserData.optionData,
+  ...optionData,
+  // danmakuVersion < 1 时强制使用新默认值 danmakuEnabled: true
+  danmakuEnabled: ((optionData.danmakuVersion as number) ?? 0) < 1
+    ? defaultUserData.optionData.danmakuEnabled
+    : (optionData.danmakuEnabled as boolean),
+},
+```
+
+> 原因：用户设备上的 IndexedDB 可能存了旧版 `danmakuEnabled: false`。通过版本号迁移，首次安装或升级时自动启用弹幕。
+
+---
+
+#### 11. `Core/gameScripts/say.ts`
 
 在 `stageStateManager.setStage('currentDialogKey', dialogKey);` 之后（原版约第 54 行）添加：
 
@@ -206,43 +253,43 @@ stageStateManager.setStage('danmakuSayId', danmakuSayId);
 
 ---
 
-#### 10. `App.tsx`
+#### 12. `App.tsx`
 
-**10a.** 在 `import` 区域末尾添加：
+**12a.** 在 `import` 区域末尾添加：
 
 ```ts
 import { DanmakuDisplay } from '@/UI/Danmaku/DanmakuDisplay';
 import { DanmakuInputModal } from '@/UI/Danmaku/DanmakuInputModal';
 ```
 
-**10b.** 在 `App` 函数体内第一行（约第 21 行，`useEffect` 之前）添加：
+**12b.** 在 `App` 函数体内第一行（约第 21 行，`useEffect` 之前）添加：
 
 ```ts
 const danmakuState = useSelector((state: RootState) => state.danmaku);
 ```
 
-**10c.** 在 JSX 中（`<DevPanel />` 之后、`</div>` 闭合之前）添加：
+**12c.** 在 JSX 中（`<DevPanel />` 之后、`</div>` 闭合之前）添加：
 
 ```tsx
 <DanmakuDisplay />
 {danmakuState.inputModalVisible && <DanmakuInputModal />}
-{danmakuState.connectionStatus !== 'disconnected' && (
+{danmakuState.connectionStatus !== 'idle' && (
   <div style={{
     position: 'fixed', top: 10, right: 10, zIndex: 14,
     fontSize: 12, padding: '2px 8px', borderRadius: 4,
-    background: danmakuState.connectionStatus === 'connected' ? 'rgba(0,200,0,0.7)' : 'rgba(200,200,0,0.7)',
+    background: danmakuState.connectionStatus === 'ready' ? 'rgba(0,200,0,0.7)' : 'rgba(200,200,0,0.7)',
     color: '#fff', pointerEvents: 'none',
   }}>
-    {danmakuState.connectionStatus === 'connected' ? '弹幕已连接' : danmakuState.connectionMessage}
+    {danmakuState.connectionStatus === 'ready' ? '弹幕已连接' : danmakuState.connectionMessage}
   </div>
 )}
 ```
 
 ---
 
-#### 11. `UI/BottomControlPanel/BottomControlPanel.tsx`
+#### 13. `UI/BottomControlPanel/BottomControlPanel.tsx`
 
-**11a.** 在 `import` 区域末尾添加：
+**13a.** 在 `import` 区域末尾添加：
 
 ```ts
 import { setInputModalVisible } from '@/store/danmakuReducer';
@@ -326,13 +373,15 @@ const toggleDanmakuStyle = () => {
 | 文件 | 改动量 | 修改内容 |
 |------|--------|----------|
 | `vite.config.ts` | 1 行 | `base: './'` 相对路径 |
-| `store/userDataInterface.ts` | 2 行 | IOptionData 添加弹幕字段 |
-| `store/userDataReducer.ts` | 2 行 | 弹幕默认值 |
+| `store/userDataInterface.ts` | 3 行 | IOptionData 添加弹幕字段 + danmakuVersion |
+| `store/userDataReducer.ts` | 3 行 | 弹幕默认值 + danmakuVersion |
 | `store/store.ts` | 2 行 | 注册 danmaku reducer |
 | `Core/webgalCore.ts` | 2 行 | WebgalCore 添加 danmakuCore 字段 |
 | `Core/Modules/stage/stageInterface.ts` | 1 行 | IStageState 添加 danmakuSayId |
 | `Core/Modules/stage/stageStateManager.ts` | 1 行 | initState 添加 danmakuSayId |
-| `Core/initializeScript.ts` | ~30 行 | initDanmaku 初始化函数 |
+| `Core/initializeScript.ts` | ~30 行 | initDanmaku 初始化函数（链式调用 infoFetcher） |
+| `Core/util/coreInitialFunction/infoFetcher.ts` | ~3 行 | 返回 Promise 以支持链式调用 |
+| `Core/controller/storage/storageController.ts` | ~8 行 | danmakuVersion 迁移，强制新默认值 |
 | `Core/gameScripts/say.ts` | 3 行 | 生成 danmakuSayId |
 | `App.tsx` | ~15 行 | 渲染 DanmakuDisplay + DanmakuInputModal + 状态指示器 |
 | `UI/BottomControlPanel/BottomControlPanel.tsx` | ~40 行 | 弹幕开关/模式/发送按钮 |

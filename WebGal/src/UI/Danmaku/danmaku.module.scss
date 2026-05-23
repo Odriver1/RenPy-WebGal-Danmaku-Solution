@@ -1,5 +1,5 @@
 .modalOverlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 18;
   background: #00000088;
@@ -10,21 +10,21 @@
 
 .modalPanel {
   background: #fffffffa;
-  border-radius: 36px;
-  padding: 72px 96px;
-  width: min(1080px, 90vw);
-  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  padding: 28px 36px;
+  width: min(560px, 94vw);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 }
 
 .modalTitle {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 48px;
+  margin-bottom: 20px;
 
   h3 {
     margin: 0;
-    font-size: 54px;
+    font-size: 20px;
     color: #ff80b8;
   }
 }
@@ -32,28 +32,30 @@
 .closeBtn {
   background: none;
   border: none;
-  font-size: 66px;
+  font-size: 28px;
   color: #ff80c8;
   cursor: pointer;
-  padding: 0 8px;
+  padding: 0 6px;
+  line-height: 1;
 
   &:hover { color: #ff80b8; }
 }
 
 .inputRow {
   display: flex;
-  gap: 30px;
-  margin-bottom: 42px;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .textInput {
   flex: 1;
-  padding: 30px 42px;
-  border: 4px solid #e0e0e0;
-  border-radius: 24px;
-  font-size: 45px;
+  padding: 10px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
   outline: none;
   background: #f5f6f8;
+  min-width: 0;
 
   &:focus {
     border-color: #ff80b8;
@@ -61,12 +63,12 @@
 }
 
 .sendBtn {
-  padding: 30px 66px;
+  padding: 10px 28px;
   background: #ff80b8;
   color: #fff;
   border: none;
-  border-radius: 24px;
-  font-size: 45px;
+  border-radius: 8px;
+  font-size: 16px;
   cursor: pointer;
   white-space: nowrap;
 
@@ -76,18 +78,20 @@
 
 .colorRow {
   display: flex;
-  gap: 48px;
+  flex-wrap: wrap;
+  gap: 18px;
   justify-content: center;
-  margin-bottom: 36px;
+  margin-bottom: 16px;
 }
 
 .colorBtn {
-  width: 108px;
-  height: 108px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 6px solid #ccc;
+  border: 3px solid #ccc;
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
   transition: border-color 0.15s, transform 0.15s;
 
   &:hover { transform: scale(1.1); }
@@ -100,7 +104,50 @@
 
 .disclaimer {
   text-align: center;
-  font-size: 36px;
+  font-size: 13px;
   color: #999;
   margin: 0;
+}
+
+@media (max-width: 480px) {
+  .modalPanel {
+    padding: 20px 18px;
+    width: 96vw;
+    border-radius: 10px;
+  }
+
+  .modalTitle {
+    margin-bottom: 14px;
+    h3 { font-size: 18px; }
+  }
+
+  .closeBtn { font-size: 24px; }
+
+  .inputRow {
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .textInput {
+    padding: 8px 12px;
+    font-size: 16px;
+  }
+
+  .sendBtn {
+    font-size: 15px;
+    padding: 8px 20px;
+  }
+
+  .colorRow {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .colorBtn {
+    width: 36px;
+    height: 36px;
+    border-width: 2px;
+  }
+
+  .disclaimer { font-size: 11px; }
 }

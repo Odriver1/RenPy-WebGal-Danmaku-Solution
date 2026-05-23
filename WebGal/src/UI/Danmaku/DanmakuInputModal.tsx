@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { useDispatch } from 'react-redux';
 import { setInputModalVisible } from '@/store/danmakuReducer';
 import { useStageState } from '@/hooks/useStageState';
@@ -35,7 +36,7 @@ export const DanmakuInputModal: React.FC = () => {
     [handleSubmit, handleClose],
   );
 
-  return (
+  return ReactDOM.createPortal(
     <div className={styles.modalOverlay} onClick={handleClose}>
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalTitle}>
@@ -75,6 +76,7 @@ export const DanmakuInputModal: React.FC = () => {
 
         <p className={styles.disclaimer}>弹幕可能需要审核后才会向其他玩家展示</p>
       </div>
-    </div>
+    </div>,
+    document.querySelector('#html-body__danmaku-modal')!,
   );
 };

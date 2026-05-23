@@ -39,14 +39,14 @@ export default function App() {
       <DevPanel />
       <DanmakuDisplay />
       {danmakuState.inputModalVisible && <DanmakuInputModal />}
-      {danmakuState.connectionStatus !== 'disconnected' && (
+      {danmakuState.connectionStatus !== 'idle' && (
         <div style={{
           position: 'fixed', top: 10, right: 10, zIndex: 14,
           fontSize: 12, padding: '2px 8px', borderRadius: 4,
-          background: danmakuState.connectionStatus === 'connected' ? 'rgba(0,200,0,0.7)' : 'rgba(200,200,0,0.7)',
+          background: danmakuState.connectionStatus === 'ready' ? 'rgba(0,200,0,0.7)' : 'rgba(200,200,0,0.7)',
           color: '#fff', pointerEvents: 'none',
         }}>
-          {danmakuState.connectionStatus === 'connected' ? '弹幕已连接' : danmakuState.connectionMessage}
+          {danmakuState.connectionStatus === 'ready' ? '弹幕已连接' : danmakuState.connectionMessage}
         </div>
       )}
     </div>

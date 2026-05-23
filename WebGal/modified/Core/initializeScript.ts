@@ -46,8 +46,8 @@ export const initializeScript = (): void => {
   loadStyle('./game/userStyleSheet.css');
   // 获得 user Animation
   getUserAnimation();
-  // 获取游戏信息
-  infoFetcher('./game/config.txt');
+  // 获取游戏信息（完成后初始化弹幕）
+  infoFetcher('./game/config.txt').then(() => initDanmaku());
   // 获取start场景
   const sceneUrl: string = assetSetter('start.txt', fileType.scene);
   // 场景写入到运行时
@@ -79,9 +79,6 @@ export const initializeScript = (): void => {
    */
   bindExtraFunc();
   webSocketFunc();
-
-  // 延迟初始化弹幕（等待 config.txt 加载完毕）
-  setTimeout(() => initDanmaku(), 800);
 };
 
 function loadStyle(url: string) {
@@ -112,7 +109,7 @@ function getUserAnimation() {
 
 /**
  * 从 config.txt 读取弹幕配置并初始化 DanmakuCore
- * 在 infoFetcher 完成之后调用（延迟 800ms 等待解析完成）
+ * 在 infoFetcher 完成之后调用
  */
 function initDanmaku() {
   try {
