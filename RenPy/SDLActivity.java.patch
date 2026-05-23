@@ -1,0 +1,667 @@
+warning: in the working copy of 'SDLActivity.java.bak', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'SDLActivity.java.mod', LF will be replaced by CRLF the next time Git touches it
+diff --git a/SDLActivity.java.bak b/SDLActivity.java.mod
+index bd811f0..e8a1aa6 100644
+--- a/SDLActivity.java.bak
++++ b/SDLActivity.java.mod
+@@ -27,7 +27,10 @@ import android.os.Build;
+ import android.os.Bundle;
+ import android.os.Handler;
+ import android.os.Message;
++import android.text.Editable;
+ import android.text.InputType;
++import android.text.Selection;
++import android.text.SpannableStringBuilder;
+ import android.util.DisplayMetrics;
+ import android.util.Log;
+ import android.util.SparseArray;
+@@ -46,6 +49,8 @@ import android.view.Window;
+ import android.view.WindowManager;
+ import android.view.inputmethod.BaseInputConnection;
+ import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.ExtractedText;
++import android.view.inputmethod.ExtractedTextRequest;
+ import android.view.inputmethod.InputConnection;
+ import android.view.inputmethod.InputMethodManager;
+ import android.widget.Button;
+@@ -295,6 +300,30 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
+ 
+         setContentView(mLayout);
+ 
++        // Request the highest available refresh rate (90/120/144 Hz) on Android 11+.
++        // Uses Window-level preferredRefreshRate (same approach verified in Expo projects).
++        if (Build.VERSION.SDK_INT >= 30) {
++            try {
++                Display.Mode[] modes = getWindowManager().getDefaultDisplay().getSupportedModes();
++                float maxRate = 60f;
++                for (Display.Mode mode : modes) {
++                    if (mode.getRefreshRate() > maxRate) {
++                        maxRate = mode.getRefreshRate();
++                    }
++                }
++                WindowManager.LayoutParams params = getWindow().getAttributes();
++                params.preferredRefreshRate = maxRate;
++                getWindow().setAttributes(params);
++                Log.v(TAG, "Set preferredRefreshRate to " + maxRate + " Hz");
++            } catch (Exception e) {
++                Log.v(TAG, "Failed to set preferredRefreshRate: " + e.toString());
++            }
++        }
++
++        // Prevent the system from panning/resizing the game surface when the soft keyboard appears.
++        // This keeps the game view stationary so the top-placed danmaku input box stays visible.
++        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
++
+         setWindowStyle(false);
+ 
+         getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(this);
+@@ -671,6 +700,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
+                     // The sizes will be set to useful values when the keyboard is shown again.
+                     mTextEdit.setLayoutParams(new RelativeLayout.LayoutParams(0, 0));
+ 
++                    if (mTextEdit instanceof DummyEdit) {
++                        ((DummyEdit) mTextEdit).resetInputState();
++                    }
++
+                     InputMethodManager imm = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                     imm.hideSoftInputFromWindow(mTextEdit.getWindowToken(), 0);
+ 
+@@ -1145,6 +1178,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
+                 mTextEdit.setLayoutParams(params);
+             }
+ 
++            if (mTextEdit instanceof DummyEdit) {
++                ((DummyEdit) mTextEdit).resetInputState();
++            }
++
+             mTextEdit.setVisibility(View.VISIBLE);
+             mTextEdit.requestFocus();
+ 
+@@ -2120,7 +2157,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
+  * pan&scan region
+  */
+ class DummyEdit extends View implements View.OnKeyListener {
+-    InputConnection ic;
++    SDLInputConnection ic;
+ 
+     public DummyEdit(Context context) {
+         super(context);
+@@ -2129,6 +2166,19 @@ class DummyEdit extends View implements View.OnKeyListener {
+         setOnKeyListener(this);
+     }
+ 
++    private SDLInputConnection ensureInputConnection() {
++        if (ic == null) {
++            ic = new SDLInputConnection(this, true);
++        }
++        return ic;
++    }
++
++    public void resetInputState() {
++        if (ic != null) {
++            ic.resetInputState();
++        }
++    }
++
+     @Override
+     public boolean onCheckIsTextEditor() {
+         return true;
+@@ -2139,16 +2189,15 @@ class DummyEdit extends View implements View.OnKeyListener {
+         /*
+          * This handles the hardware keyboard input
+          */
++        SDLInputConnection connection = ensureInputConnection();
+         if (event.getAction() == KeyEvent.ACTION_DOWN) {
+             if (SDLActivity.isTextInputEvent(event)) {
+-                ic.commitText(String.valueOf((char) event.getUnicodeChar()), 1);
++                connection.commitText(String.valueOf((char) event.getUnicodeChar()), 1);
+                 return true;
+             }
+-            SDLActivity.onNativeKeyDown(keyCode);
+-            return true;
++            return connection.handleHardwareKeyEvent(event);
+         } else if (event.getAction() == KeyEvent.ACTION_UP) {
+-            SDLActivity.onNativeKeyUp(keyCode);
+-            return true;
++            return connection.handleHardwareKeyEvent(event);
+         }
+         return false;
+     }
+@@ -2164,6 +2213,7 @@ class DummyEdit extends View implements View.OnKeyListener {
+         // FIXME: An even more effective way would be if Android provided this out of the box, but where would the fun be in that :)
+         if (event.getAction()==KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
+             if (SDLActivity.mTextEdit != null && SDLActivity.mTextEdit.getVisibility() == View.VISIBLE) {
++                resetInputState();
+                 SDLActivity.onNativeKeyboardFocusLost();
+             }
+         }
+@@ -2172,21 +2222,337 @@ class DummyEdit extends View implements View.OnKeyListener {
+ 
+     @Override
+     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+-        ic = new SDLInputConnection(this, true);
++        ic = ensureInputConnection();
++        ic.resetInputState();
++
++        outAttrs.inputType = InputType.TYPE_CLASS_TEXT |
++                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS |
++                    InputType.TYPE_TEXT_VARIATION_NORMAL;
+ 
+-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
+-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+-                | EditorInfo.IME_FLAG_NO_FULLSCREEN /* API 11 */;
++        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI |
++                    EditorInfo.IME_ACTION_DONE;
++        outAttrs.initialSelStart = 0;
++        outAttrs.initialSelEnd = 0;
+ 
+         return ic;
+     }
+ }
+ 
+ class SDLInputConnection extends BaseInputConnection {
++    private final View mTargetView;
++    private final InputMethodManager mImm;
++    private final Editable mEditable;
++    private int mSelectionStart;
++    private int mSelectionEnd;
++    private int mComposingStart;
++    private int mComposingEnd;
++    private int mExtractedTextToken;
++    private int mExtractedTextFlags;
++    private int mBatchEditDepth;
++    private boolean mImeUpdatePending;
+ 
+     public SDLInputConnection(View targetView, boolean fullEditor) {
+         super(targetView, fullEditor);
++        mTargetView = targetView;
++        mImm = (InputMethodManager) targetView.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
++        mEditable = new SpannableStringBuilder();
++        resetInputState();
++    }
++
++    public void resetInputState() {
++        mEditable.clear();
++        mSelectionStart = 0;
++        mSelectionEnd = 0;
++        mComposingStart = -1;
++        mComposingEnd = -1;
++        mExtractedTextToken = -1;
++        mExtractedTextFlags = 0;
++        mBatchEditDepth = 0;
++        mImeUpdatePending = false;
++        Selection.setSelection(mEditable, 0);
++    }
++
++    private int clampIndex(int index) {
++        if (index < 0) {
++            return 0;
++        }
++        if (index > mEditable.length()) {
++            return mEditable.length();
++        }
++        return index;
++    }
++
++    private int getCaret() {
++        return Math.max(mSelectionStart, mSelectionEnd);
++    }
++
++    private boolean hasComposingRegion() {
++        return mComposingStart >= 0 && mComposingEnd >= mComposingStart;
++    }
++
++    private void clearComposingRegion() {
++        mComposingStart = -1;
++        mComposingEnd = -1;
++    }
++
++    private void setSelectionInternal(int start, int end) {
++        mSelectionStart = clampIndex(start);
++        mSelectionEnd = clampIndex(end);
++        Selection.setSelection(mEditable, mSelectionStart, mSelectionEnd);
++    }
++
++    private void collapseSelection(int position) {
++        setSelectionInternal(position, position);
++    }
++
++    private int calculateCursorPosition(int replacementStart, CharSequence text, int newCursorPosition) {
++        int textLength = text != null ? text.length() : 0;
++        int cursor;
++
++        if (newCursorPosition > 0) {
++            cursor = replacementStart + textLength + newCursorPosition - 1;
++        } else {
++            cursor = replacementStart + newCursorPosition;
++        }
++
++        return clampIndex(cursor);
++    }
++
++    private int[] getReplacementRange() {
++        if (hasComposingRegion()) {
++            return new int[] { mComposingStart, mComposingEnd };
++        }
++
++        return new int[] {
++            Math.min(mSelectionStart, mSelectionEnd),
++            Math.max(mSelectionStart, mSelectionEnd)
++        };
++    }
++
++    private String getCurrentComposingText() {
++        if (!hasComposingRegion()) {
++            return "";
++        }
++
++        return mEditable.subSequence(mComposingStart, mComposingEnd).toString();
++    }
++
++    private ExtractedText buildExtractedText(int flags) {
++        ExtractedText extractedText = new ExtractedText();
++        extractedText.text = ((flags & InputConnection.GET_TEXT_WITH_STYLES) != 0) ? mEditable : mEditable.toString();
++        extractedText.partialStartOffset = -1;
++        extractedText.partialEndOffset = -1;
++        extractedText.startOffset = 0;
++        extractedText.selectionStart = mSelectionStart;
++        extractedText.selectionEnd = mSelectionEnd;
++        return extractedText;
++    }
++
++    private void queueImeStateUpdate() {
++        if (mBatchEditDepth > 0) {
++            mImeUpdatePending = true;
++            return;
++        }
++
++        if (mImm != null) {
++            mImm.updateSelection(mTargetView, mSelectionStart, mSelectionEnd, mComposingStart, mComposingEnd);
++
++            if (mExtractedTextToken >= 0) {
++                mImm.updateExtractedText(mTargetView, mExtractedTextToken, buildExtractedText(mExtractedTextFlags));
++            }
++        }
++
++        mImeUpdatePending = false;
++    }
+ 
++    private void moveSelectionLocally(int delta) {
++        collapseSelection(getCaret() + delta);
++    }
++
++    private void sendNativeKeyPress(int keyCode) {
++        SDLActivity.onNativeKeyDown(keyCode);
++        SDLActivity.onNativeKeyUp(keyCode);
++    }
++
++    private void moveNativeCaret(int delta) {
++        int keyCode = delta < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT;
++        int steps = Math.abs(delta);
++
++        for (int i = 0; i < steps; i++) {
++            sendNativeKeyPress(keyCode);
++        }
++    }
++
++    private void deleteAroundCursorLocally(int beforeLength, int afterLength) {
++        int before = Math.max(0, beforeLength);
++        int after = Math.max(0, afterLength);
++        int caret = getCaret();
++        int start = clampIndex(caret - before);
++        int end = clampIndex(caret + after);
++
++        if (start >= end) {
++            return;
++        }
++
++        boolean overlapsComposing = hasComposingRegion() && !(end <= mComposingStart || start >= mComposingEnd);
++        int removed = end - start;
++
++        mEditable.delete(start, end);
++
++        if (overlapsComposing) {
++            clearComposingRegion();
++        } else if (hasComposingRegion() && end <= mComposingStart) {
++            mComposingStart -= removed;
++            mComposingEnd -= removed;
++        }
++
++        collapseSelection(start);
++    }
++
++    private void sendCommittedTextToNative(String text, int newCursorPosition) {
++        if (text.length() == 1 && text.charAt(0) == '\n') {
++            if (SDLActivity.onNativeSoftReturnKey()) {
++                return;
++            }
++        }
++
++        for (int i = 0; i < text.length(); i++) {
++            nativeGenerateScancodeForUnichar(text.charAt(i));
++        }
++
++        SDLInputConnection.nativeCommitText(text, newCursorPosition);
++    }
++
++    public boolean handleHardwareKeyEvent(KeyEvent event) {
++        int keyCode = event.getKeyCode();
++
++        if (event.getAction() == KeyEvent.ACTION_DOWN) {
++            switch (keyCode) {
++                case KeyEvent.KEYCODE_DEL:
++                    deleteAroundCursorLocally(1, 0);
++                    SDLActivity.onNativeKeyDown(keyCode);
++                    queueImeStateUpdate();
++                    return true;
++
++                case KeyEvent.KEYCODE_FORWARD_DEL:
++                    deleteAroundCursorLocally(0, 1);
++                    SDLActivity.onNativeKeyDown(keyCode);
++                    queueImeStateUpdate();
++                    return true;
++
++                case KeyEvent.KEYCODE_DPAD_LEFT:
++                    moveSelectionLocally(-1);
++                    SDLActivity.onNativeKeyDown(keyCode);
++                    queueImeStateUpdate();
++                    return true;
++
++                case KeyEvent.KEYCODE_DPAD_RIGHT:
++                    moveSelectionLocally(1);
++                    SDLActivity.onNativeKeyDown(keyCode);
++                    queueImeStateUpdate();
++                    return true;
++
++                default:
++                    SDLActivity.onNativeKeyDown(keyCode);
++                    return true;
++            }
++        } else if (event.getAction() == KeyEvent.ACTION_UP) {
++            SDLActivity.onNativeKeyUp(keyCode);
++            return true;
++        }
++
++        return false;
++    }
++
++    @Override
++    public Editable getEditable() {
++        return mEditable;
++    }
++
++    @Override
++    public boolean beginBatchEdit() {
++        mBatchEditDepth += 1;
++        return true;
++    }
++
++    @Override
++    public boolean endBatchEdit() {
++        if (mBatchEditDepth > 0) {
++            mBatchEditDepth -= 1;
++        }
++
++        if (mBatchEditDepth == 0 && mImeUpdatePending) {
++            queueImeStateUpdate();
++        }
++
++        return true;
++    }
++
++    @Override
++    public CharSequence getTextBeforeCursor(int length, int flags) {
++        int end = Math.min(mSelectionStart, mSelectionEnd);
++        int start = Math.max(0, end - Math.max(0, length));
++        return mEditable.subSequence(start, end);
++    }
++
++    @Override
++    public CharSequence getTextAfterCursor(int length, int flags) {
++        int start = Math.max(mSelectionStart, mSelectionEnd);
++        int end = Math.min(mEditable.length(), start + Math.max(0, length));
++        return mEditable.subSequence(start, end);
++    }
++
++    @Override
++    public CharSequence getSelectedText(int flags) {
++        int start = Math.min(mSelectionStart, mSelectionEnd);
++        int end = Math.max(mSelectionStart, mSelectionEnd);
++        if (start == end) {
++            return "";
++        }
++        return mEditable.subSequence(start, end);
++    }
++
++    @Override
++    public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
++        if (request != null && (flags & InputConnection.GET_EXTRACTED_TEXT_MONITOR) != 0) {
++            mExtractedTextToken = request.token;
++            mExtractedTextFlags = flags;
++        }
++
++        return buildExtractedText(flags);
++    }
++
++    @Override
++    public boolean setSelection(int start, int end) {
++        int oldCaret = getCaret();
++        int newCaret = clampIndex(Math.max(start, end));
++
++        collapseSelection(newCaret);
++
++        if (newCaret != oldCaret) {
++            moveNativeCaret(newCaret - oldCaret);
++        }
++
++        queueImeStateUpdate();
++        return true;
++    }
++
++    @Override
++    public boolean setComposingRegion(int start, int end) {
++        int regionStart = clampIndex(Math.min(start, end));
++        int regionEnd = clampIndex(Math.max(start, end));
++
++        if (regionStart >= regionEnd) {
++            clearComposingRegion();
++            queueImeStateUpdate();
++            return true;
++        }
++
++        mComposingStart = regionStart;
++        mComposingEnd = regionEnd;
++        collapseSelection(regionEnd);
++        queueImeStateUpdate();
++        return true;
+     }
+ 
+     @Override
+@@ -2203,40 +2569,102 @@ class SDLInputConnection extends BaseInputConnection {
+          * as we do with physical keyboards, let's just use it to hide the keyboard.
+          */
+ 
+-        if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
++        if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
++            finishComposingText();
+             if (SDLActivity.onNativeSoftReturnKey()) {
+                 return true;
+             }
+         }
+ 
++        if (event.getAction() == KeyEvent.ACTION_DOWN) {
++            switch (event.getKeyCode()) {
++                case KeyEvent.KEYCODE_DEL:
++                    deleteAroundCursorLocally(1, 0);
++                    SDLActivity.onNativeKeyDown(event.getKeyCode());
++                    queueImeStateUpdate();
++                    return true;
++
++                case KeyEvent.KEYCODE_FORWARD_DEL:
++                    deleteAroundCursorLocally(0, 1);
++                    SDLActivity.onNativeKeyDown(event.getKeyCode());
++                    queueImeStateUpdate();
++                    return true;
++
++                case KeyEvent.KEYCODE_DPAD_LEFT:
++                    moveSelectionLocally(-1);
++                    SDLActivity.onNativeKeyDown(event.getKeyCode());
++                    queueImeStateUpdate();
++                    return true;
++
++                case KeyEvent.KEYCODE_DPAD_RIGHT:
++                    moveSelectionLocally(1);
++                    SDLActivity.onNativeKeyDown(event.getKeyCode());
++                    queueImeStateUpdate();
++                    return true;
++            }
++        } else if (event.getAction() == KeyEvent.ACTION_UP) {
++            switch (event.getKeyCode()) {
++                case KeyEvent.KEYCODE_DEL:
++                case KeyEvent.KEYCODE_FORWARD_DEL:
++                case KeyEvent.KEYCODE_DPAD_LEFT:
++                case KeyEvent.KEYCODE_DPAD_RIGHT:
++                    SDLActivity.onNativeKeyUp(event.getKeyCode());
++                    return true;
++            }
++        }
+ 
+         return super.sendKeyEvent(event);
+     }
+ 
+     @Override
+     public boolean commitText(CharSequence text, int newCursorPosition) {
++        String committedText = text != null ? text.toString() : "";
++        int[] replacementRange = getReplacementRange();
+ 
+-        for (int i = 0; i < text.length(); i++) {
+-            char c = text.charAt(i);
+-            if (c == '\n') {
+-                if (SDLActivity.onNativeSoftReturnKey()) {
+-                    return true;
+-                }
++        if (committedText.length() == 1 && committedText.charAt(0) == '\n') {
++            clearComposingRegion();
++            if (SDLActivity.onNativeSoftReturnKey()) {
++                queueImeStateUpdate();
++                return true;
+             }
+-            nativeGenerateScancodeForUnichar(c);
+         }
+ 
+-        SDLInputConnection.nativeCommitText(text.toString(), newCursorPosition);
++        if (committedText.length() == 0 && hasComposingRegion()) {
++            committedText = getCurrentComposingText();
++        }
++
++        if (committedText.length() == 0 && replacementRange[0] == replacementRange[1]) {
++            clearComposingRegion();
++            queueImeStateUpdate();
++            return true;
++        }
+ 
+-        return super.commitText(text, newCursorPosition);
++        mEditable.replace(replacementRange[0], replacementRange[1], committedText);
++        clearComposingRegion();
++        collapseSelection(calculateCursorPosition(replacementRange[0], committedText, newCursorPosition));
++        sendCommittedTextToNative(committedText, newCursorPosition);
++        queueImeStateUpdate();
++        return true;
+     }
+ 
+     @Override
+     public boolean setComposingText(CharSequence text, int newCursorPosition) {
++        String composingText = text != null ? text.toString() : "";
++        int[] replacementRange = getReplacementRange();
++
++        mEditable.replace(replacementRange[0], replacementRange[1], composingText);
+ 
+-        nativeSetComposingText(text.toString(), newCursorPosition);
++        if (composingText.length() > 0) {
++            mComposingStart = replacementRange[0];
++            mComposingEnd = replacementRange[0] + composingText.length();
++        } else {
++            clearComposingRegion();
++        }
+ 
+-        return super.setComposingText(text, newCursorPosition);
++        collapseSelection(calculateCursorPosition(replacementRange[0], composingText, newCursorPosition));
++        nativeSetComposingText(composingText, newCursorPosition);
++        queueImeStateUpdate();
++        return true;
+     }
+ 
+     public static native void nativeCommitText(String text, int newCursorPosition);
+@@ -2247,20 +2675,61 @@ class SDLInputConnection extends BaseInputConnection {
+ 
+     @Override
+     public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+-        // Workaround to capture backspace key. Ref: http://stackoverflow.com/questions/14560344/android-backspace-in-webview-baseinputconnection
+-        // and https://bugzilla.libsdl.org/show_bug.cgi?id=2265
+-        if (beforeLength > 0 && afterLength == 0) {
+-            boolean ret = true;
+-            // backspace(s)
+-            while (beforeLength-- > 0) {
+-               boolean ret_key = sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+-                              && sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL));
+-               ret = ret && ret_key;
++        int before = Math.max(0, beforeLength);
++        int after = Math.max(0, afterLength);
++
++        if (before == 0 && after == 0) {
++            return true;
++        }
++
++        deleteAroundCursorLocally(before, after);
++
++        while (before-- > 0) {
++            sendNativeKeyPress(KeyEvent.KEYCODE_DEL);
++        }
++
++        while (after-- > 0) {
++            sendNativeKeyPress(KeyEvent.KEYCODE_FORWARD_DEL);
++        }
++
++        queueImeStateUpdate();
++        return true;
++    }
++
++    @Override
++    public boolean finishComposingText() {
++        if (!hasComposingRegion()) {
++            clearComposingRegion();
++            queueImeStateUpdate();
++            return true;
++        }
++
++        String committedText = getCurrentComposingText();
++        int committedStart = mComposingStart;
++
++        clearComposingRegion();
++        collapseSelection(committedStart + committedText.length());
++
++        if (committedText.length() > 0) {
++            sendCommittedTextToNative(committedText, 1);
++        } else {
++            nativeSetComposingText("", 1);
++        }
++
++        queueImeStateUpdate();
++        return true;
++    }
++
++    @Override
++    public boolean performEditorAction(int actionCode) {
++        if (actionCode == EditorInfo.IME_ACTION_DONE) {
++            finishComposingText();
++            if (SDLActivity.onNativeSoftReturnKey()) {
++                return true;
+             }
+-            return ret;
+         }
+ 
+-        return super.deleteSurroundingText(beforeLength, afterLength);
++        return super.performEditorAction(actionCode);
+     }
+ }
+ 

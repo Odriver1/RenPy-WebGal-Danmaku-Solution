@@ -11,7 +11,9 @@
 ```
 ├── RenPy/                          # Ren'Py 引擎弹幕模块
 │   ├── danmaku_system.rpy          #   单文件客户端（复制到 game/ 即可）
-│   ├── SDLActivity.java.mod        #   安卓中文输入 + 高刷补丁（Ren'Py 8.5.0）
+│   ├── SDLActivity.java.mod        #   安卓中文输入 + 高刷补丁（针对Ren'Py 8.5.0）
+│   ├── SDLActivity.java.bak        #   Ren'Py 8.5.0的原版SDLActivity.java文件备份
+│   ├── SDLActivity.java.patch      #   Ren'Py 8.5.0的SDLActivity.java文件diff信息
 │   ├── README.md                   #   详细接入文档
 │   ├── agent for install.md        #   AI 智能体接入指引
 │   └── 安卓键盘补丁安装说明.md       #   安卓补丁安装步骤
@@ -39,7 +41,7 @@
 1. 复制 `RenPy/danmaku_system.rpy` 到游戏 `game/` 目录
 2. 在 `script.rpy` 的 `label splashscreen` 中加入 `$ renpy_danmaku_prefetch()`
 3. 在 `screens.rpy` 的 quick_menu 和 preferences 中加入开关/发送/设置控件
-4. 安卓版需额外安装 `SDLActivity.java` 补丁
+4. 安卓版需额外安装 `SDLActivity.java` 补丁，详见`安卓键盘补丁安装说明.md`
 
 详细步骤见 [RenPy/README.md](RenPy/README.md)。
 
